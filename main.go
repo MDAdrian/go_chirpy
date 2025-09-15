@@ -22,11 +22,11 @@ func main() {
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
 
 	// Metrics and Reset endpoint
-	mux.HandleFunc("/metrics", apiCfg.handlerMetrics)
-	mux.HandleFunc("/reset", apiCfg.handlerReset)
+	mux.HandleFunc("GET /metrics", apiCfg.handlerMetrics)
+	mux.HandleFunc("POST /reset", apiCfg.handlerReset)
 
 	// Health (readiness/liveness) endpoint
-	mux.HandleFunc("/healthz", readinessHandler)
+	mux.HandleFunc("GET /healthz", readinessHandler)
 
 
 	srv := &http.Server{
