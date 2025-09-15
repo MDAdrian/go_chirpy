@@ -1,24 +1,29 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"sync/atomic"
 )
 
+type apiConfig struct {
+	fileserverHits atomic.Int32
+}
 
 func main() {
+	const filepathRoot = "."
 	const port = "8080"
 
 	mux := http.NewServeMux()
+	apiCfg := &apiConfig{}
 
 	// Serve files under /app/
-	appHandler := http.StripPrefix("/app/", http.FileServer(http.Dir(".")))
-	mux.Handle("/app/", appHandler)
+	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
 
-	// Serve files from the "assets" directory under /assets/
-	mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./index.html")
-	})
+	// Metrics and Reset endpoint
+	mux.HandleFunc("/metrics", apiCfg.handlerMetrics)
+	mux.HandleFunc("/reset", apiCfg.handlerReset)
 
 	// Health (readiness/liveness) endpoint
 	mux.HandleFunc("/healthz", readinessHandler)
@@ -37,4 +42,15 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
+}
+
+func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintf(w, "Hits: %d", cfg.fileserverHits.Load())
+}
+
+func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+	cfg.fileserverHits.Store(0)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte("OK"))
 }
