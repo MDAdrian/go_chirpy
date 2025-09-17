@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"local/mda/internal/database"
 	"net/http"
@@ -73,4 +75,32 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, chirps_converted)
+}
+
+func (cfg *apiConfig) handlerGetChirpById(w http.ResponseWriter, r *http.Request) {
+	chirpId := r.PathValue("chirpId")
+	chirpUuid, err := uuid.Parse(chirpId)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error when decoding path value id ", err)
+		return
+	}
+
+	chirp, err := cfg.db.GetChirpById(context.Background(), chirpUuid)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondWithError(w, http.StatusNotFound, "could not find chirp with that id", nil)
+		return
+	}
+	
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error when getting chirp by id", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, Chirp{
+		Id:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserId:    chirp.UserID,
+	})
 }
