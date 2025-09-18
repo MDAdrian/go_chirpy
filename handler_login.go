@@ -7,12 +7,15 @@ import (
 	"errors"
 	"local/mda/internal/auth"
 	"net/http"
+	"time"
 )
+
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type loginRequest struct {
 		Email string `json:"email"`
 		Password string `json:"password"`
+		ExpiresInSeconds *int `json:"expires_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -21,6 +24,17 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
+	}
+
+	// expiration logic
+	const maxExpiry = time.Hour
+	expiry := maxExpiry // default 1 hour
+	if params.ExpiresInSeconds != nil {
+		// clamp to maximum of 1 hour
+		requested := time.Duration(*params.ExpiresInSeconds) * time.Second
+		if requested < maxExpiry {
+			expiry = requested
+		}
 	}
 
 	user, err := cfg.db.GetUserByEmail(context.Background(), params.Email)
@@ -39,10 +53,22 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// make JWT
+	token, err := auth.MakeJWT(
+		user.ID,
+		cfg.authSecret,
+		expiry,
+	)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not create token: %v", err)
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, User{
 		Id: user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email: user.Email,
+		Token: token,
 	})
 }

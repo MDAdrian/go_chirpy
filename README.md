@@ -14,3 +14,7 @@ show tables
 
 ## Packages
 go get -u github.com/golang-jwt/jwt/v5
+
+## Tools
+TO create a secret:
+openssl rand -base64 64

@@ -1,13 +1,17 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
+
 
 func HashPassword(password string) (string, error) {
 	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -75,4 +79,25 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 		return uuid.UUID{}, fmt.Errorf("invalid subject uuid: %w", err)
 	}
 	return uid, nil
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	const prefix = "Bearer "
+
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("authorization header not found")
+	}
+
+	if !strings.HasPrefix(authHeader, prefix) {
+		return "", errors.New("authorization header is not a Bearer token")
+	}
+
+	// Strip the "Bearer " prefix and trim whitespace
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, prefix))
+	if token == "" {
+		return "", errors.New("token string is empty")
+	}
+
+	return token, nil
 }

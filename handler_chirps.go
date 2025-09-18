@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"local/mda/internal/auth"
 	"local/mda/internal/database"
 	"net/http"
 	"time"
@@ -24,7 +25,6 @@ type Chirp struct {
 func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
 	type createChirpRequest struct {
 		Body string `json:"body"`
-		UserId uuid.UUID `json:"user_id"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -35,14 +35,27 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	bearer, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Not authorized to access", nil)
+		return
+	}
+
+	userId, err := auth.ValidateJWT(bearer, cfg.authSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Not authorized to access", nil)
+		return
+	}
+
 	chirp := cleanProfaneWords(params.Body)
 
 	chirpEntity, err := cfg.db.CreateChirp(context.Background(), database.CreateChirpParams{
 		Body: chirp,
-		UserID: params.UserId,
+		UserID: userId,
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "error creating chirp: %w", err)
+		return
 	}
 
 	fmt.Printf("Created chirp for user: %s, message: '%s'\n", chirpEntity.UserID, chirpEntity.Body)
