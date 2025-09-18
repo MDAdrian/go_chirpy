@@ -6,21 +6,25 @@ import (
 	"net/http"
 	"time"
 
+	"local/mda/internal/auth"
+	"local/mda/internal/database"
+
 	"github.com/google/uuid"
 )
+
+type User struct {
+	Id uuid.UUID 		`json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email string 		`json:"email"`
+}
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	type createUserReq struct {
 		Email string `json:"email"`
-	}
-
-	type createUseResp struct {
-		Id uuid.UUID 		`json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email string 		`json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -31,14 +35,21 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	email := params.Email
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "There was a problem with your password", err)
+	}
 
-	user, err := cfg.db.CreateUser(context.Background(), email)
+	user, err := cfg.db.CreateUser(context.Background(), database.CreateUserParams{
+		Email: email,
+		HashedPassword: hashedPassword,
+	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Internal Error creating user", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusCreated, createUseResp{
+	respondWithJSON(w, http.StatusCreated, User{
 		Id: user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
