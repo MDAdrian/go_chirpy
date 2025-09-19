@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"local/mda/internal/auth"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -19,7 +20,14 @@ func (cfg *apiConfig) handlerPolkaWebhook(w http.ResponseWriter, r *http.Request
 
 	ctx := context.Background()
 
-	// 1) Parse body (both fields required)
+	// 1. Validate API key
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil || apiKey != cfg.polkaKey { 
+		respondWithError(w, http.StatusUnauthorized, "invalid API key", nil)
+		return
+	}
+
+	// 2) Parse body (both fields required)
 	var body requestWebhook
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondWithError(w, http.StatusBadRequest, "couldn't decode request body", err)
@@ -31,7 +39,7 @@ func (cfg *apiConfig) handlerPolkaWebhook(w http.ResponseWriter, r *http.Request
 		return
 	}	
 
-	_, err := cfg.db.SetUserToChirpyRed(ctx, body.Data.UserId)
+	_, err = cfg.db.SetUserToChirpyRed(ctx, body.Data.UserId)
 	switch {
 	case err == sql.ErrNoRows:
 		respondWithError(w, http.StatusNotFound, "user not found", nil)
