@@ -117,3 +117,50 @@ func (cfg *apiConfig) handlerGetChirpById(w http.ResponseWriter, r *http.Request
 		UserId:    chirp.UserID,
 	})
 }
+
+
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	// 1) Require and validate access token
+	bearer, err := auth.GetBearerToken(r.Header)
+	if err != nil || bearer == "" {
+		respondWithError(w, http.StatusUnauthorized, "missing or invalid authorization header", nil)
+		return
+	}
+	userID, err := auth.ValidateJWT(bearer, cfg.authSecret) // returns uuid.UUID for the subject
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "invalid or expired token", nil)
+		return
+	}
+
+	// 2) Parse chirp ID from path
+	idStr := r.PathValue("chirpId") // make sure your route uses {chirpID}; keep the casing consistent
+	chirpUUID, err := uuid.Parse(idStr)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid chirp id", err)
+		return
+	}
+
+	// 3) Load chirp (404 if not found)
+	chirp, err := cfg.db.GetChirpById(context.Background(), chirpUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondWithError(w, http.StatusNotFound, "chirp not found", nil)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "couldn't fetch chirp", err)
+		return
+	}
+
+	// 4) Ownership check (403 if not author)
+	if chirp.UserID != userID {
+		respondWithError(w, http.StatusForbidden, "you are not allowed to delete this chirp", nil)
+		return
+	}
+
+	// 5) Delete (204 on success)
+	if err := cfg.db.DeleteChirp(context.Background(), chirpUUID); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "couldn't delete chirp", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent) // 204
+}
