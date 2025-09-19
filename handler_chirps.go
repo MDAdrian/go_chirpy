@@ -9,6 +9,7 @@ import (
 	"local/mda/internal/auth"
 	"local/mda/internal/database"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -186,5 +187,19 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// 3) Check query param "sort" (default asc)
+	sortParam := r.URL.Query().Get("sort")
+	if sortParam != "desc" {
+		sortParam = "asc"
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if sortParam == "asc" {
+			return out[i].CreatedAt.Before(out[j].CreatedAt)
+		}
+		return out[j].CreatedAt.Before(out[i].CreatedAt)
+	})
+
+	// 4) Respond
 	respondWithJSON(w, http.StatusOK, out)
 }
