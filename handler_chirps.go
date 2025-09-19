@@ -68,28 +68,6 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	chirps, err := cfg.db.GetChirps(context.Background())
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "error when getting chirps: %w", err)
-		return
-	}
-
-	chirps_converted := []Chirp{} // initialize an empty slice
-
-	for _, chirp := range chirps {
-		chirps_converted = append(chirps_converted, Chirp{
-			Id:        chirp.ID,
-			CreatedAt: chirp.CreatedAt,
-			UpdatedAt: chirp.UpdatedAt,
-			Body:      chirp.Body,
-			UserId:    chirp.UserID,
-		})
-	}
-
-	respondWithJSON(w, http.StatusOK, chirps_converted)
-}
-
 func (cfg *apiConfig) handlerGetChirpById(w http.ResponseWriter, r *http.Request) {
 	chirpId := r.PathValue("chirpId")
 	chirpUuid, err := uuid.Parse(chirpId)
@@ -163,4 +141,50 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent) // 204
+}
+
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	authorParam := r.URL.Query().Get("author_id")
+	var (
+		rows []database.Chirp
+		err  error
+	)
+
+	if authorParam == "" {
+		// No filter → all chirps, ASC by created_at
+		rows, err = cfg.db.GetChirps(ctx)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "couldn't fetch chirps", err)
+			return
+		}
+	} else {
+		// Filter by author_id (UUID expected)
+		authorID, parseErr := uuid.Parse(authorParam)
+		if parseErr != nil {
+			respondWithError(w, http.StatusBadRequest, "invalid author_id format (expected UUID)", parseErr)
+			return
+		}
+
+		rows, err = cfg.db.GetChirpsByAuthor(ctx, authorID)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "couldn't fetch chirps for author", err)
+			return
+		}
+	}
+
+	// Map DB → API shape (omit sensitive fields)
+	out := make([]Chirp, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, Chirp{
+			Id:        c.ID,
+			CreatedAt: c.CreatedAt,
+			UpdatedAt: c.UpdatedAt,
+			Body:      c.Body,
+			UserId:    c.UserID,
+		})
+	}
+
+	respondWithJSON(w, http.StatusOK, out)
 }
